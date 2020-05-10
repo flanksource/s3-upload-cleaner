@@ -2,8 +2,11 @@ package main
 
 import (
 	"bytes"
+	"crypto/tls"
+	"flag"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -21,10 +24,21 @@ const startedadDateFormat = "2006-01-02T15:04:05Z"
 
 func main() {
 
-	endPoint, bucket, accessKey, secretAccessKey := getCommandLineArgs()
+	var endpoint, bucket string
+	var dryRun, skipTLSVerify bool
+
+	flag.StringVar(&endpoint, "endpoint", "", "Address of the S3 endpoint")
+	flag.StringVar(&bucket, "bucket", "", "Bucket to use")
+	flag.BoolVar(&dryRun, "dry-run", false, "Just print files to be deleted")
+	flag.BoolVar(&skipTLSVerify, "skip-tls-verify", false, "Skip TLS certificate verification")
+
+	flag.Parse()
+
+	accessKey := os.Getenv("AWS_ACCESS_KEY_ID")
+	secretKey := os.Getenv("AWS_SECRET_ACCESS_KEY")
 
 	totalRemoved := 0
-	s := getS3Client(endPoint, accessKey, secretAccessKey)
+	s := getS3Client(endpoint, accessKey, secretKey, skipTLSVerify)
 
 	fmt.Printf("Endpoint: %s\n", *s.Config.Endpoint)
 	fmt.Printf("Bucket: %s\n\n", bucket)
@@ -175,7 +189,7 @@ func getCommandLineArgs() (string, string, string, string) {
 	return os.Args[1], os.Args[2], os.Args[3], os.Args[4]
 }
 
-func getS3Client(endPoint, accessKey, secretAccessKey string) *s3.S3 {
+func getS3Client(endPoint, accessKey, secretAccessKey string, skipTLSVerify bool) *s3.S3 {
 	awsConfig := aws.NewConfig()
 
 	creds := credentials.NewChainCredentials([]credentials.Provider{
@@ -189,6 +203,13 @@ func getS3Client(endPoint, accessKey, secretAccessKey string) *s3.S3 {
 		&credentials.SharedCredentialsProvider{},
 		&ec2rolecreds.EC2RoleProvider{Client: ec2metadata.New(session.New())},
 	})
+
+	if skipTLSVerify {
+		tr := &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		}
+		awsConfig.WithHTTPClient(&http.Client{Transport: tr})
+	}
 
 	awsConfig.WithS3ForcePathStyle(true)
 	awsConfig.WithEndpoint(endPoint)
