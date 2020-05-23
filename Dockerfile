@@ -8,4 +8,4 @@ RUN cd /src && go build -o s3-upload-cleaner
 FROM alpine
 WORKDIR /app
 COPY --from=build-env /src/s3-upload-cleaner /app/
-ENTRYPOINT ./s3-upload-cleaner
+CMD /app/s3-upload-cleaner
