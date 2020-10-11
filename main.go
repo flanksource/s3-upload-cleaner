@@ -72,6 +72,8 @@ func (c *S3Cleaner) CleanMultipartUploads() error {
 	var marker *string = nil
 	var maxKeys int64 = 100
 
+	errorsCount := 0
+
 	for {
 		objs, err := c.s3.ListObjects(&s3.ListObjectsInput{
 			Bucket:    aws.String(c.bucket),
@@ -90,7 +92,9 @@ func (c *S3Cleaner) CleanMultipartUploads() error {
 
 			removed, err := c.cleanMPUs(aws.StringValue(cp.Prefix))
 			if err != nil {
-				return errors.Wrapf(err, "failed to remove multipart uploads for prefix %s", aws.StringValue(cp.Prefix))
+				fmt.Printf("Error: failed to remove multipart uploads for prefix %s: %v\n", aws.StringValue(cp.Prefix), err)
+				errorsCount++
+				continue
 			}
 
 			totalRemoved += removed
@@ -100,7 +104,8 @@ func (c *S3Cleaner) CleanMultipartUploads() error {
 		fmt.Println()
 		fmt.Println("Removing upload folders:")
 		if err := c.cleanUploadFolders(aws.StringValue(objs.Prefix)); err != nil {
-			return errors.Wrapf(err, "failed to clean upload folders for prefix %s", aws.StringValue(objs.Prefix))
+			fmt.Printf("Error: failed to clean upload folders for prefix %s: %v\n", aws.StringValue(objs.Prefix), err)
+			errorsCount++
 		}
 
 		if aws.BoolValue(objs.IsTruncated) && len(objs.Contents) > 0 {
@@ -108,6 +113,10 @@ func (c *S3Cleaner) CleanMultipartUploads() error {
 		} else {
 			break
 		}
+	}
+
+	if errorsCount > 0 {
+		return errors.Errorf("Received %d errors", errorsCount)
 	}
 
 	return nil
